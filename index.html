@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Zebra Barcode Label Generator</title>
+<style>
+  body { font-family: Arial, sans-serif; margin: 2em; }
+  input { margin: 0.3em; padding: 0.3em; width: 150px; }
+  button { margin-top: 1em; padding: 0.5em 1em; }
+  textarea { width: 100%; height: 250px; margin-top: 1em; }
+  label { display: block; margin-top: 0.5em; }
+</style>
+</head>
+<body>
+<h2>Zebra Label Generator (50×32 mm, Code128, 10 mm padding)</h2>
+
+<label>Prefix: <input id="prefix" value="BL" /></label>
+<label>Start Number: <input id="start" type="number" /></label>
+<label>End Number: <input id="end" type="number" /></label>
+
+<button id="generate">Generate ZPL</button>
+<button id="download" disabled>Download .ZPL</button>
+
+<textarea id="output" placeholder="ZPL code will appear here..."></textarea>
+
+<script>
+const USED_KEY = "used_barcodes";
+
+function loadUsed() {
+  return JSON.parse(localStorage.getItem(USED_KEY) || "[]");
+}
+
+function saveUsed(codes) {
+  localStorage.setItem(USED_KEY, JSON.stringify(codes));
+}
+
+function generateZPL(prefix, start, end) {
+  const mmToDots = 8;
+  const labelWidth = 50 * mmToDots;
+  const labelHeight = 32 * mmToDots;
+  const pad = 10 * mmToDots;
+  const usableHeight = labelHeight - 2 * pad;
+  const barcodeHeight = 70;
+  const textHeight = 25;
+  const textWidth = 25;
+  const textGap = 10;
+  const barcodeY = pad + (usableHeight - barcodeHeight - textGap - textHeight) / 2;
+
+  const used = loadUsed();
+  const newUsed = [...used];
+  let zpl = "";
+  let newCount = 0, skipped = 0;
+
+  for (let i = start; i <= end; i++) {
+    const code = `${prefix}${i.toString().padStart(8, "0")}`;
+    if (used.includes(code)) { skipped++; continue; }
+    newUsed.push(code);
+    newCount++;
+    zpl += `
+^XA
+^PW${labelWidth}
+^LL${labelHeight}
+^LH0,0
+^FO${pad},${barcodeY}^BY2
+^BCN,${barcodeHeight},Y,N,N
+^FD${code}^FS
+^FO${labelWidth/2 - code.length*textWidth/4},${barcodeY + barcodeHeight + textGap}^A0N,${textHeight},${textWidth}^FD${code}^FS
+^XZ
+`;
+  }
+
+  saveUsed(newUsed);
+  alert(\`Created \${newCount} new labels, skipped \${skipped} already used.\`);
+  return zpl.trim();
+}
+
+document.getElementById("generate").onclick = () => {
+  const prefix = document.getElementById("prefix").value.trim().toUpperCase();
+  const start = parseInt(document.getElementById("start").value);
+  const end = parseInt(document.getElementById("end").value);
+  if (!prefix || isNaN(start) || isNaN(end) || start > end) {
+    alert("Please enter a valid prefix and number range.");
+    return;
+  }
+  const zpl = generateZPL(prefix, start, end);
+  document.getElementById("output").value = zpl;
+  document.getElementById("download").disabled = !zpl;
+};
+
+document.getElementById("download").onclick = () => {
+  const blob = new Blob([document.getElementById("output").value], {type: "text/plain"});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "barcodes.zpl";
+  a.click();
+  URL.revokeObjectURL(url);
+};
+</script>
+</body>
+</html>
